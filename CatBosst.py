@@ -66,7 +66,7 @@ CATEGORIC_COLS = ["Pclass", "Sex", "Embarked"]
 df[CATEGORIC_COLS] = df[CATEGORIC_COLS].astype(str)
 
 # Rellenar los 2 NaN de Embarked con la moda
-df["Embarked"] = df["Embarked"].fillna(df["Embarked"].mode()[0], inplace=True)
+df["Embarked"].fillna(df["Embarked"].mode()[0], inplace=True)
 
 print("\n  • Primeras 5 filas (columnas seleccionadas):")
 print(df[FEATURES + [TARGET]].head().to_string(index=False))
