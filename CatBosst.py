@@ -1,22 +1,19 @@
-#   CASO APLICADO — CatBoost sobre el Dataset Titanic
+#   CASO APLICADO — CatBoost 
 
-## 1. Importar librerías
+## 1. Cargar el dataset
 
-from numpy.testing import verbose
-from numpy.matlib import rand
-from XGboost import color
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import seaborn as sns
 import warnings
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
 from catboost import CatBoostClassifier, Pool, cv as catboost_cv
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.metrics import (
-    accuracy_score, classification_report, 
+    accuracy_score, classification_report,
     confusion_matrix, roc_curve, auc, ConfusionMatrixDisplay
 )
 
@@ -66,7 +63,7 @@ CATEGORIC_COLS = ["Pclass", "Sex", "Embarked"]
 df[CATEGORIC_COLS] = df[CATEGORIC_COLS].astype(str)
 
 # Rellenar los 2 NaN de Embarked con la moda
-df["Embarked"].fillna(df["Embarked"].mode()[0], inplace=True)
+df["Embarked"] = df["Embarked"].fillna(df["Embarked"].mode()[0], inplace=True)
 
 print("\n  • Primeras 5 filas (columnas seleccionadas):")
 print(df[FEATURES + [TARGET]].head().to_string(index=False))
@@ -161,7 +158,7 @@ ax.set_ylabel("Proporción de sobrevivientes")
 ax.set_ylim(0, 0.75)
 
 plt.tight_layout()
-plt.savefig("eda_titanic.png", dpi=150, bbox_inches="tight")
+'plt.savefig("eda_titanic.png", dpi=150, bbox_inches="tight")'
 plt.show()
 print("  [OK] Gráfico EDA guardado como 'eda_titanic.png'")
 
@@ -257,6 +254,218 @@ ax.annotate(
     fontsize=9, color=CATRED,
 )
 plt.tight_layout()
-plt.savefig("curva_aprendizaje.png", dpi=150, bbox_inches="tight")
+'plt.savefig("curva_aprendizaje.png", dpi=150, bbox_inches="tight")'
 plt.show()
 print("  [OK] Gráfico guardado como 'curva_aprendizaje.png'")
+
+# 7. Evaluación del modelo
+
+y_pred = model.predict(test_pool)
+y_pred_prob = model.predict_proba(test_pool)[:, 1] # Probabilidad de la clase positiva (sobrevivió)
+
+acc = accuracy_score(y_test, y_pred)
+fpr, tpr, _ = roc_curve(y_test, y_pred_prob)
+roc_auc = auc(fpr, tpr)
+
+print(f"\n  ┌─────────────────────────────────────┐")
+print(f"  │  Accuracy  : {acc:.4f}                  │")
+print(f"  │  AUC-ROC   : {roc_auc:.4f}                  │")
+print(f"  └─────────────────────────────────────┘")
+print("\n  Reporte de clasificación:")
+print(classification_report(y_test, y_pred,
+      target_names=["No sobrevivió (0)", "Sobrevivió (1)"]))
+
+# ── Visualización: Matriz de Confusión + Curva ROC
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+fig.suptitle(
+    "Evaluación del Modelo CatBoost — Titanic\n",
+    fontsize=13, fontweight="bold", color=CATBLUE
+)
+
+# Matriz de confusión
+
+cm = confusion_matrix(y_test, y_pred)
+disp = ConfusionMatrixDisplay(
+    confusion_matrix=cm,
+    display_labels=["No sobrevivió (0)", "Sobrevivió (1)"]
+)
+disp.plot(ax = ax1, colorbar = False,
+          cmap = plt.cm.Blues, values_format = 'd')
+ax1.set_title(f"Matriz de Confusión\nAccuracy = {acc:.4f}", color=CATBLUE)
+
+# Anotaciones manuales en la matriz
+tn, fp, fn, tp = cm.ravel()
+ax1.text(-0.4, -0.4,
+    f"VP={tp} | FP={fp}\nFN={fn} | VN={tn}",
+    fontsize=8, color="gray", transform=ax1.transAxes)
+
+# Curva ROC
+ax2.plot(fpr, tpr, color=CATBLUE, lw=2,
+         label=f"CatBoost (AUC = {roc_auc:.4f})")
+ax2.plot([0, 1], [0, 1], color="gray", ls="--", lw=1, label="Clasificador aleatorio")
+ax2.fill_between(fpr, tpr, alpha=0.08, color=CATBLUE)
+ax2.set_title(f"Curva ROC — AUC = {roc_auc:.4f}", color=CATBLUE)
+ax2.set_xlabel("Tasa de Falsos Positivos (FPR)")
+ax2.set_ylabel("Tasa de Verdaderos Positivos (TPR)")
+ax2.legend(loc="lower right", framealpha=0.9)
+
+plt.tight_layout()
+'plt.savefig("evaluacion_modelo.png", dpi=150, bbox_inches="tight")'
+plt.show()
+print("  [OK] Gráfico guardado como 'evaluacion_modelo.png'")
+
+# 8. Importancia de Variables (Feature Importance)
+
+importances = model.get_feature_importance(train_pool)
+feat_names = X.columns.to_list()
+fi_df = pd.DataFrame({
+    "Variable": feat_names, "Importancia": importances
+}).sort_values(by="Importancia", ascending=False)
+
+print("\n  Importancia de variables (PredictionValuesChange):")
+for _, row in fi_df.sort_values("Importancia", ascending=False).iterrows():
+    barra = "█" * int(row["Importancia"] / 2)
+    cat_mark = " ← CATEGÓRICA (OTS)" if row["Variable"] in CATEGORIC_COLS else ""
+    print(f"    {row['Variable']:10s}: {row['Importancia']:6.2f}  {barra}{cat_mark}")
+
+# ── Gráfico horizontal ───────────────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(10, 5))
+colors = [CATGREEN if v in CATEGORIC_COLS else CATBLUE
+          for v in fi_df["Variable"]]
+bars = ax.barh(fi_df["Variable"], fi_df["Importancia"],
+               color=colors, edgecolor="white", linewidth=0.8)
+for bar, val in zip(bars, fi_df["Importancia"]):
+    ax.text(bar.get_width() + 0.3, bar.get_y() + bar.get_height()/2,
+            f"{val:.2f}", va="center", fontsize=9)
+
+patch_cat = mpatches.Patch(color=CATGREEN, label="Variable categórica (OTS aplicada)")
+patch_num = mpatches.Patch(color=CATBLUE,  label="Variable numérica")
+ax.legend(handles=[patch_cat, patch_num], loc="lower right", fontsize=9)
+
+ax.set_title(
+    "Importancia de Variables — CatBoost\n",
+    fontsize=13, fontweight="bold", color=CATBLUE
+)
+ax.set_xlabel("Importancia (PredictionValuesChange)")
+ax.set_xlim(0, fi_df["Importancia"].max() * 1.15)
+
+plt.tight_layout()
+'plt.savefig("importancia_variables.png", dpi=150, bbox_inches="tight")'
+plt.show()
+print("  [OK] Gráfico guardado como 'importancia_variables.png'")    
+
+# 9. Validación Cruzada con CatBoost nativo
+
+full_pool = Pool(X, y, cat_features=cat_indices)
+cv_params = {
+    "iterations"    : 1000,
+    "learning_rate" : 0.05,
+    "depth"         : 6,
+    "l2_leaf_reg"   : 3,
+    "loss_function" : "Logloss", # Añadido: Se requiere para cross-validation
+    "eval_metric"   : "AUC",
+    "early_stopping_rounds": 50,
+    "random_seed"   : 42,
+    "verbose"       : 0,
+}
+
+cv_results = catboost_cv(
+    pool       = full_pool,
+    params     = cv_params,
+    fold_count = 5,
+    stratified = True,
+    plot       = False,
+    verbose    = False,
+)
+
+best_idx  = cv_results["test-AUC-mean"].idxmax()
+cv_auc    = cv_results["test-AUC-mean"].iloc[best_idx]
+cv_std    = cv_results["test-AUC-std"].iloc[best_idx]
+
+print(f"\n  Resultados 5-Fold CV:")
+print(f"  • AUC promedio : {cv_auc:.4f} ± {cv_std:.4f}")
+print(f"  • Mejor iter.  : {best_idx + 1}")
+
+# ── Gráfico CV ───────────────────────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(10, 4))
+iters_cv = range(len(cv_results))
+ax.plot(iters_cv, cv_results["test-AUC-mean"],
+        color=CATGREEN, lw=2, label="AUC Validación (media 5-fold)")
+ax.fill_between(
+    iters_cv,
+    cv_results["test-AUC-mean"] - cv_results["test-AUC-std"],
+    cv_results["test-AUC-mean"] + cv_results["test-AUC-std"],
+    alpha=0.2, color=CATGREEN, label="± 1 desv. estándar"
+)
+# ax.plot(iters_cv, cv_results["learn-Logloss-mean"],
+#         color=CATBLUE, lw=2, ls="--", label="Logloss Entrenamiento (media)") # Comentado porque esta métrica no está disponible en cv_results
+ax.axvline(best_idx, color=CATRED, ls=":", lw=1.5,
+           label=f"Mejor iter. ({best_idx+1})")
+ax.set_title(
+    f"Validación Cruzada 5-Fold — CatBoost Titanic\n"
+    f"AUC = {cv_auc:.4f} ± {cv_std:.4f}   ",
+    fontsize=11, fontweight="bold", color=CATBLUE
+)
+ax.set_xlabel("Iteración")
+ax.set_ylabel("Métrica")
+ax.legend(fontsize=9)
+plt.tight_layout()
+'plt.savefig("cross_validation.png", dpi=150, bbox_inches="tight")'
+plt.show()
+print("  [OK] Gráfico guardado como 'cross_validation.png'")
+
+# 10. Predicción sobre nuevos pasajeros
+
+nuevos = pd.DataFrame({
+    "Age"      : [25,   55,   8,    35],
+    "Fare"     : [7.25, 50.0, 30.0, 80.0],
+    "Sex"      : ["0",  "0",  "1",  "1"],     # 0=Masculino, 1=Femenino
+    "sibsp"    : [0,    0,    2,    1],
+    "Parch"    : [0,    0,    1,    0],
+    "Pclass"   : ["3",  "1",  "2",  "1"],
+    "Embarked" : ["2",  "0",  "2",  "0"],     # 2=Southampton, 0=Cherbourg
+})
+
+perfiles = [
+    "Hombre joven (3ª clase, Southampton)",
+    "Hombre mayor (1ª clase, Cherbourg)",
+    "Niña (2ª clase, Southampton)",
+    "Mujer adulta (1ª clase, Cherbourg)",
+]
+
+nuevos_pool = Pool(nuevos, cat_features=cat_indices)
+prob_surv   = model.predict_proba(nuevos_pool)[:, 1]
+pred_surv   = model.predict(nuevos_pool)
+
+print("\n  Perfil del pasajero              | P(Sobrevive) | Predicción")
+print("  " + "─" * 60)
+for perfil, prob, pred in zip(perfiles, prob_surv, pred_surv):
+    resultado = "✓ SOBREVIVE" if pred == 1 else "✗ NO SOBREVIVE"
+    print(f"  {perfil:<35}| {prob:.4f}       | {resultado}")
+
+# ── Gráfico de predicciones ──────────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(10, 4))
+colores_pred = [CATGREEN if p == 1 else CATRED for p in pred_surv]
+bars = ax.bar(range(len(perfiles)), prob_surv,
+              color=colores_pred, edgecolor="white", linewidth=1.2, width=0.5)
+ax.axhline(0.5, color="gray", ls="--", lw=1.5, label="Umbral de decisión (0.5)")
+for bar, p, pr in zip(bars, prob_surv, pred_surv):
+    label = f"{p:.3f}\n{'Sobrevive' if pr==1 else 'No sobrevive'}"
+    ax.text(bar.get_x() + bar.get_width()/2,
+            bar.get_height() + 0.02, label,
+            ha="center", fontsize=9, fontweight="bold",
+            color=CATGREEN if pr == 1 else CATRED)
+ax.set_xticks(range(len(perfiles)))
+ax.set_xticklabels(perfiles, rotation=12, ha="right", fontsize=9)
+ax.set_ylabel("Probabilidad de supervivencia")
+ax.set_ylim(0, 1.15)
+ax.set_title(
+    "Predicciones para Pasajeros Hipotéticos\n",
+    fontsize=13, fontweight="bold", color=CATBLUE
+)
+ax.legend()
+plt.tight_layout()
+'plt.savefig("predicciones_nuevos.png", dpi=150, bbox_inches="tight")'
+plt.show()
+print("  [OK] Gráfico guardado como 'predicciones_nuevos.png'")
