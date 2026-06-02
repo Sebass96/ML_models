@@ -1,6 +1,4 @@
-## Caso Práctico: Predicción de Desigualdad Económica con Random Forest ##
-
-## Importar las bibliotecas necesarias
+ 
 
 import pandas as pd
 import numpy as np
