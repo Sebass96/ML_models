@@ -1,4 +1,6 @@
- 
+ ## Random Forest ##
+
+## Importar las bibliotecas necesarias
 
 import pandas as pd
 import numpy as np
