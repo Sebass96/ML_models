@@ -169,6 +169,23 @@ def build_autoencoder(input_dim, latent_dim):
     x = layers.BatchNormalization(name='enc_bn_2')(x)
     x = layers.Dropout(0.15, name='enc_dropout_2')(x)
 
+    # Espacio latente (cuello de botella)
+
+    latent = layers.Dense(latent_dim, activation='relu', name='latent')(x)
+
+    # Decoder
+    x = layers.Dense(32, activation='relu', name='dec_dense_1')(latent)
+    x = layers.BatchNormalization(name='dec_bn_1')(x)
+    x = layers.Dropout(0.15, name='dec_dropout_1')(x)
+
+    x = layers.Dense(64, activation='relu', name='dec_dense_2')(x)
+    x = layers.BatchNormalization(name='dec_bn_2')(x)
+
+    # Salida: misma dimensión que entrada, activación lineal
+    outputs = layers.Dense(input_dim, activation='linear', name='output')(x)
+
+    # Modelo Autoencoder
+    model = keras.Model(inputs=inputs, outputs=outputs, name='Autoencoder_FraudDetection')
+    return model
+
     
-
-
